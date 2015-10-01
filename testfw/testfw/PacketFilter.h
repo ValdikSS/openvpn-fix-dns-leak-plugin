@@ -15,12 +15,11 @@
 
 // Standard includes.
 #include <Winsock2.h>
-#include <windows.h>
-#include <stdio.h>
 #include <conio.h>
 #include <strsafe.h>
 #include <fwpmu.h>
-#include <list>
+#include <stdint.h>
+#include <vector>
 
 // Firewall sub-layer names.
 #define FIREWALL_SUBLAYER_NAME  "OpenVPNFirewall"
@@ -31,7 +30,7 @@ class PacketFilter
 {
 private:
 	// Save filter IDs here
-	UINT64 filterids[4] = {0};
+	std::vector<UINT64> filterids;
     // Firewall engine handle.
     HANDLE m_hEngineHandle;
 
@@ -48,7 +47,7 @@ private:
     DWORD AddRemoveFilter( bool bAdd );
 
 public:
-	uint64_t tapluid64;
+	std::vector<uint64_t> tapluids;
 
     // Constructor.
     PacketFilter();

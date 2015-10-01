@@ -11,8 +11,6 @@
 #include "stdafx.h"
 #include "PacketFilter.h"
 #include "openvpn-plugin.h"
-#include <winsock2.h>
-#include <ws2ipdef.h>
 #include <iphlpapi.h>
 #include <time.h>
 #pragma comment(lib, "iphlpapi.lib")
@@ -146,6 +144,7 @@ PacketFilter::AddRemoveFilter - This method adds or removes a filter to an
 DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 {
     DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
+	UINT64 filterid;
     try
     {
         if( bAdd )
@@ -174,8 +173,9 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         dwFwAPiRetCode = ::FwpmFilterAdd0( m_hEngineHandle,
                                                            &Filter,
                                                            NULL,
-                                                           &this->filterids[0]);
-						printf("Filter 1 (Block IPv4 DNS) added with ID=%I64d\r\n", this->filterids[0]);
+                                                           &filterid);
+						printf("Filter (Block IPv4 DNS) added with ID=%I64d\r\n", filterid);
+						filterids.push_back(filterid);
 
 						// Second filter. Block IPv6 DNS.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
@@ -184,42 +184,50 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 						dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
 							&Filter,
 							NULL,
-							&this->filterids[1]);
-						printf("Filter 2 (Block IPv6 DNS) added with ID=%I64d\r\n", this->filterids[1]);
+							&filterid);
+						printf("Filter (Block IPv6 DNS) added with ID=%I64d\r\n", filterid);
+						filterids.push_back(filterid);
 
 						// Third filter. Permit all IPv4 traffic from TAP.
-						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 						Filter.action.type = FWP_ACTION_PERMIT;
 
 						Condition.fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
 						Condition.matchType = FWP_MATCH_EQUAL;
 						Condition.conditionValue.type = FWP_UINT64;
-						Condition.conditionValue.uint64 = &this->tapluid64;
 
-						// Add filter condition to our interface. Save filter id in filterids.
-						dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
-							&Filter,
-							NULL,
-							&this->filterids[2]);
-						printf("Filter 3 (Permit all IPv4 traffic from TAP) added with ID=%I64d\r\n", this->filterids[2]);
+						for (std::vector<uint64_t>::iterator tapluid = tapluids.begin();
+						tapluid != tapluids.end(); ++tapluid) {
+							uint64_t tapluid64 = *tapluid;
+							Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+							Condition.conditionValue.uint64 = &tapluid64;
 
-						// Forth filter. Permit all IPv6 traffic from TAP.
-						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+							// Add filter condition to our interface. Save filter id in filterids.
+							dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
+								&Filter,
+								NULL,
+								&filterid);
+							printf("Filter (Permit all IPv4 traffic from TAP) added with ID=%I64d\r\n", filterid);
+							filterids.push_back(filterid);
 
-						// Add filter condition to our interface. Save filter id in filterids.
-						dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
-							&Filter,
-							NULL,
-							&this->filterids[3]);
-						printf("Filter 4 (Permit all IPv6 traffic from TAP) added with ID=%I64d\r\n", this->filterids[3]);
+							// Forth filter. Permit all IPv6 traffic from TAP.
+							Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+
+							// Add filter condition to our interface. Save filter id in filterids.
+							dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
+								&Filter,
+								NULL,
+								&filterid);
+							printf("Filter (Permit all IPv6 traffic from TAP) added with ID=%I64d\r\n", filterid);
+							filterids.push_back(filterid);
+						}
         }
         else
         {
-			for (int i = 0; i <= 3; i++) {
+			for (int i = 0; i < filterids.size(); i++) {
 				dwFwAPiRetCode = ::FwpmFilterDeleteById0(m_hEngineHandle,
-					this->filterids[i]);
+					filterids[i]);
 			}
-
+			filterids.clear();
         }
     }
     catch(...)
@@ -236,7 +244,7 @@ BOOL PacketFilter::StartFirewall()
 {
     BOOL bStarted = FALSE;
 
-	int tapadapter_index = -1;
+	NET_LUID tapluid;
 	PIP_ADAPTER_INFO pAdapterInfo;
 	PIP_ADAPTER_INFO pAdapter = NULL;
 	DWORD dwRetVal = 0;
@@ -261,9 +269,9 @@ BOOL PacketFilter::StartFirewall()
 	if ((dwRetVal = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen)) == NO_ERROR) {
 		pAdapter = pAdapterInfo;
 		while (pAdapter) {
-			if (strcmp(pAdapter->Description, "TAP-Windows Adapter V9") == 0) {
-				tapadapter_index = pAdapter->Index;
-				break;
+			if (strstr(pAdapter->Description, "TAP-Windows Adapter V9") != NULL) {
+				if (ConvertInterfaceIndexToLuid(pAdapter->Index, &tapluid) == NO_ERROR)
+					tapluids.push_back(tapluid.Value);
 			}
 			pAdapter = pAdapter->Next;
 		}
@@ -274,18 +282,12 @@ BOOL PacketFilter::StartFirewall()
 	if (pAdapterInfo)
 		FREE(pAdapterInfo);
 
-
-	NET_LUID tapluid;
-	if (tapadapter_index < 0) {
-		printf("Tap Adapter not found!\n");
+	if (tapluids.size() <= 0) {
+		printf("No TAP adapters found!\n");
 		return 3;
 	}
-	if (ConvertInterfaceIndexToLuid(tapadapter_index, &tapluid) != NO_ERROR) {
-		printf("Cant find LUID for TAP adapter!\n");
-		return 4;
-	}
 
-	this->tapluid64 = tapluid.Value;
+	printf("Found %zd TAP adapters\n", tapluids.size());
 
     try
     {
@@ -361,7 +363,6 @@ int main()
 		
         if( pktFilter.StartFirewall() )
         {
-			printf("Tapluid64 = %I64d\n", pktFilter.tapluid64);
             printf( "\nFirewall started successfully...\n" );
         }
         else
