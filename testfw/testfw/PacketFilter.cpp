@@ -145,29 +145,48 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 {
     DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
 	UINT64 filterid;
+	WCHAR svchostpath[MAX_PATH];
+	FWP_BYTE_BLOB *svchostblob = NULL;
     try
     {
         if( bAdd )
         {
                         FWPM_FILTER0 Filter = {0};
-                        FWPM_FILTER_CONDITION0 Condition = {0};
+                        FWPM_FILTER_CONDITION0 Condition[2] = {0};
+
+						// Get system32 path
+						GetSystemDirectory(svchostpath, MAX_PATH);
+						// Add svchost.exe to the path
+						wcscat_s(svchostpath, L"\\svchost.exe");
+
+						if (FwpmGetAppIdFromFileName0(svchostpath, &svchostblob) != ERROR_SUCCESS)
+							return ERROR_BAD_COMMAND;
 
                         // Prepare filter.
                         Filter.subLayerKey = m_subLayerGUID;
                         Filter.displayData.name = FIREWALL_SERVICE_NAMEW;
                         Filter.weight.type = FWP_EMPTY;
-                        Filter.filterCondition = &Condition;
-                        Filter.numFilterConditions = 1;
+                        Filter.filterCondition = Condition;
+                        Filter.numFilterConditions = 2;
 
-						// First filter. Block IPv4 DNS.
+						// First filter. Block IPv4 DNS requests from svchost.exe.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 						Filter.action.type = FWP_ACTION_BLOCK;
 
                         // First condition
-                        Condition.fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
-                        Condition.matchType = FWP_MATCH_EQUAL;
-                        Condition.conditionValue.type = FWP_UINT16;
-                        Condition.conditionValue.uint16 = 53;
+                        Condition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+                        Condition[0].matchType = FWP_MATCH_EQUAL;
+                        Condition[0].conditionValue.type = FWP_UINT16;
+                        Condition[0].conditionValue.uint16 = 53;
+
+						Condition[1].fieldKey = FWPM_CONDITION_ALE_APP_ID;
+						Condition[1].matchType = FWP_MATCH_EQUAL;
+						Condition[1].conditionValue.type = FWP_BYTE_BLOB_TYPE;
+						Condition[1].conditionValue.byteBlob = svchostblob;
+
+						/*	Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+							Filter.action.type = FWP_ACTION_PERMIT;
+						*/
 
                         // Add filter condition to our interface. Save filter id in filterids.
                         dwFwAPiRetCode = ::FwpmFilterAdd0( m_hEngineHandle,
@@ -177,7 +196,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 						printf("Filter (Block IPv4 DNS) added with ID=%I64d\r\n", filterid);
 						filterids.push_back(filterid);
 
-						// Second filter. Block IPv6 DNS.
+						// Second filter. Block IPv6 DNS requests from svchost.exe.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
 						// Add filter condition to our interface. Save filter id in filterids.
@@ -188,18 +207,18 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 						printf("Filter (Block IPv6 DNS) added with ID=%I64d\r\n", filterid);
 						filterids.push_back(filterid);
 
-						// Third filter. Permit all IPv4 traffic from TAP.
+						// Third filter. Permit all IPv4 traffic from TAP from svchost.exe.
 						Filter.action.type = FWP_ACTION_PERMIT;
 
-						Condition.fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
-						Condition.matchType = FWP_MATCH_EQUAL;
-						Condition.conditionValue.type = FWP_UINT64;
+						Condition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
+						Condition[0].matchType = FWP_MATCH_EQUAL;
+						Condition[0].conditionValue.type = FWP_UINT64;
 
 						for (std::vector<uint64_t>::iterator tapluid = tapluids.begin();
 						tapluid != tapluids.end(); ++tapluid) {
 							uint64_t tapluid64 = *tapluid;
 							Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-							Condition.conditionValue.uint64 = &tapluid64;
+							Condition[0].conditionValue.uint64 = &tapluid64;
 
 							// Add filter condition to our interface. Save filter id in filterids.
 							dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,

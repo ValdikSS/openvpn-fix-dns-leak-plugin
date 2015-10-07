@@ -12,4 +12,4 @@ for 32 bit system or
 for 64 bit system
 
 ### How it works
-This plugin implements Windows Filtering Platform userspace filter to block all IPv4 and IPv6 traffic to port 53 except on OpenVPN's TAP interface. It works like a temporary firewall which clears its rules upon termination or crash. This is important as you won't get broken internet connection if OpenVPN client suddenly crashes, unlike with other methods.
+This plugin implements Windows Filtering Platform userspace filter to block all IPv4 and IPv6 DNS queries from DNS Client service to port 53 except on OpenVPN's TAP interface. It works like a temporary firewall which clears its rules upon termination or crash. This is important as you won't get broken internet connection if OpenVPN client suddenly crashes, unlike with other methods.
