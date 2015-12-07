@@ -145,8 +145,8 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 {
     DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
 	UINT64 filterid;
-	WCHAR svchostpath[MAX_PATH];
-	FWP_BYTE_BLOB *svchostblob = NULL;
+	WCHAR openvpnpath[MAX_PATH];
+	FWP_BYTE_BLOB *openvpnblob = NULL;
     try
     {
         if( bAdd )
@@ -154,12 +154,10 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         FWPM_FILTER0 Filter = {0};
                         FWPM_FILTER_CONDITION0 Condition[2] = {0};
 
-						// Get system32 path
-						GetSystemDirectory(svchostpath, MAX_PATH);
-						// Add svchost.exe to the path
-						wcscat_s(svchostpath, L"\\svchost.exe");
+						// Get OpenVPN exe path
+						GetModuleFileName(NULL, openvpnpath, MAX_PATH);
 
-						if (FwpmGetAppIdFromFileName0(svchostpath, &svchostblob) != ERROR_SUCCESS)
+						if (FwpmGetAppIdFromFileName0(openvpnpath, &openvpnblob) != ERROR_SUCCESS)
 							return ERROR_BAD_COMMAND;
 
                         // Prepare filter.
@@ -169,7 +167,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         Filter.filterCondition = Condition;
                         Filter.numFilterConditions = 2;
 
-						// First filter. Block IPv4 DNS requests from svchost.exe.
+						// First filter. Block IPv4 DNS requests from openvpn.exe.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 						Filter.action.type = FWP_ACTION_BLOCK;
 
@@ -180,9 +178,9 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         Condition[0].conditionValue.uint16 = 53;
 
 						Condition[1].fieldKey = FWPM_CONDITION_ALE_APP_ID;
-						Condition[1].matchType = FWP_MATCH_EQUAL;
+						Condition[1].matchType = FWP_MATCH_NOT_EQUAL;
 						Condition[1].conditionValue.type = FWP_BYTE_BLOB_TYPE;
-						Condition[1].conditionValue.byteBlob = svchostblob;
+						Condition[1].conditionValue.byteBlob = openvpnblob;
 
 						/*	Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 							Filter.action.type = FWP_ACTION_PERMIT;
@@ -207,18 +205,19 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 						printf("Filter (Block IPv6 DNS) added with ID=%I64d\r\n", filterid);
 						filterids.push_back(filterid);
 
-						// Third filter. Permit all IPv4 traffic from TAP from svchost.exe.
+						// Third filter. Permit all IPv4 traffic from TAP.
 						Filter.action.type = FWP_ACTION_PERMIT;
+						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
 
-						Condition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
-						Condition[0].matchType = FWP_MATCH_EQUAL;
-						Condition[0].conditionValue.type = FWP_UINT64;
+						Condition[1].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
+						Condition[1].matchType = FWP_MATCH_EQUAL;
+						Condition[1].conditionValue.type = FWP_UINT64;
 
 						for (std::vector<uint64_t>::iterator tapluid = tapluids.begin();
 						tapluid != tapluids.end(); ++tapluid) {
 							uint64_t tapluid64 = *tapluid;
 							Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-							Condition[0].conditionValue.uint64 = &tapluid64;
+							Condition[1].conditionValue.uint64 = &tapluid64;
 
 							// Add filter condition to our interface. Save filter id in filterids.
 							dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
@@ -288,7 +287,9 @@ BOOL PacketFilter::StartFirewall()
 	if ((dwRetVal = GetAdaptersInfo(pAdapterInfo, &ulOutBufLen)) == NO_ERROR) {
 		pAdapter = pAdapterInfo;
 		while (pAdapter) {
-			if (strstr(pAdapter->Description, "TAP-Windows Adapter V9") != NULL) {
+			if ((strstr(pAdapter->Description, "TAP-Windows Adapter V9") != NULL) ||
+				(strstr(pAdapter->Description, "Viscosity Virtual Adapter") != NULL))
+			{
 				if (ConvertInterfaceIndexToLuid(pAdapter->Index, &tapluid) == NO_ERROR)
 					tapluids.push_back(tapluid.Value);
 			}
