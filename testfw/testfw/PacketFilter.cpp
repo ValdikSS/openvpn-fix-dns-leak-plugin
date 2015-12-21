@@ -242,7 +242,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
         }
         else
         {
-			for (int i = 0; i < filterids.size(); i++) {
+			for (unsigned int i = 0; i < filterids.size(); i++) {
 				dwFwAPiRetCode = ::FwpmFilterDeleteById0(m_hEngineHandle,
 					filterids[i]);
 			}
@@ -272,7 +272,7 @@ BOOL PacketFilter::StartFirewall()
 	pAdapterInfo = (IP_ADAPTER_INFO *)MALLOC(sizeof(IP_ADAPTER_INFO));
 	if (pAdapterInfo == NULL) {
 		printf("Error allocating memory needed to call GetAdaptersinfo\n");
-		return 1;
+		return 2;
 	}
 	// Make an initial call to GetAdaptersInfo to get
 	// the necessary size into the ulOutBufLen variable
@@ -281,7 +281,7 @@ BOOL PacketFilter::StartFirewall()
 		pAdapterInfo = (IP_ADAPTER_INFO *)MALLOC(ulOutBufLen);
 		if (pAdapterInfo == NULL) {
 			printf("Error allocating memory needed to call GetAdaptersinfo\n");
-			return 2;
+			return 3;
 		}
 	}
 
@@ -305,7 +305,7 @@ BOOL PacketFilter::StartFirewall()
 
 	if (tapluids.size() <= 0) {
 		printf("No TAP adapters found!\n");
-		return 3;
+		return 4;
 	}
 
 	printf("Found %zd TAP adapters\n", tapluids.size());
@@ -454,7 +454,7 @@ openvpn_plugin_func_v1(openvpn_plugin_handle_t handle, const int type, const cha
 	if (type == OPENVPN_PLUGIN_UP) {
 		PrintTime();
 		printf("PLUGIN: Starting firewall\n");
-		if (context->pktFilter.StartFirewall())
+		if (context->pktFilter.StartFirewall() == TRUE)
 			return OPENVPN_PLUGIN_FUNC_SUCCESS;
 		else {
 			PrintTime();
@@ -465,7 +465,7 @@ openvpn_plugin_func_v1(openvpn_plugin_handle_t handle, const int type, const cha
 	if (type == OPENVPN_PLUGIN_DOWN) {
 		PrintTime();
 		printf("PLUGIN: Stopping firewall\n");
-		if (context->pktFilter.StopFirewall())
+		if (context->pktFilter.StopFirewall() == TRUE)
 				return OPENVPN_PLUGIN_FUNC_SUCCESS;
 		else {
 			PrintTime();
