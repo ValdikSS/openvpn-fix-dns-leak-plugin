@@ -238,6 +238,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 							printf("Filter (Permit all IPv6 traffic from TAP) added with ID=%I64d\r\n", filterid);
 							filterids.push_back(filterid);
 						}
+						tapluids.clear();
         }
         else
         {
