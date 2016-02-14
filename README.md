@@ -4,7 +4,7 @@ Windows 10 DNS resolver sends DNS requests in parallel to all available network 
 This plugin should fix this issue for Windows 8.1 and Windows 10 users. [Read More](https://medium.com/@ValdikSS/beware-of-windows-10-dns-resolver-and-dns-leaks-5bc5bfb4e3f1).
 
 ### How to use
-Functionality of this plugin is integrated into OpenVPN 2.3.9, just use `--block-outside-dns` configuration option. If you can't use the latest OpenVPN version, follow the steps below:
+**Functionality of this plugin is integrated into OpenVPN 2.3.9**, just use `--block-outside-dns` configuration option. If you can't use the latest OpenVPN version, follow the steps below:
 
 1. Download `fix-dns-leak-32.dll` for 32 bit system or `fix-dns-leak-64.dll` for 64 bit system
 2. Add the following line to your OpenVPN configuration file:  
