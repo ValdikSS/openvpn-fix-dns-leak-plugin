@@ -163,13 +163,14 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         // Prepare filter.
                         Filter.subLayerKey = m_subLayerGUID;
                         Filter.displayData.name = FIREWALL_SERVICE_NAMEW;
-                        Filter.weight.type = FWP_EMPTY;
+						Filter.weight.type = FWP_UINT8;
+						Filter.weight.uint8 = 0xF;
                         Filter.filterCondition = Condition;
                         Filter.numFilterConditions = 2;
 
-						// First filter. Block IPv4 DNS requests from openvpn.exe.
+						// First filter. Permit IPv4 DNS queries from OpenVPN itself.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-						Filter.action.type = FWP_ACTION_BLOCK;
+						Filter.action.type = FWP_ACTION_PERMIT;
 
                         // First condition
                         Condition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
@@ -178,7 +179,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                         Condition[0].conditionValue.uint16 = 53;
 
 						Condition[1].fieldKey = FWPM_CONDITION_ALE_APP_ID;
-						Condition[1].matchType = FWP_MATCH_NOT_EQUAL;
+						Condition[1].matchType = FWP_MATCH_EQUAL;
 						Condition[1].conditionValue.type = FWP_BYTE_BLOB_TYPE;
 						Condition[1].conditionValue.byteBlob = openvpnblob;
 
@@ -191,10 +192,10 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
                                                            &Filter,
                                                            NULL,
                                                            &filterid);
-						printf("Filter (Block IPv4 DNS) added with ID=%I64d\r\n", filterid);
+						printf("Filter (Permit OpenVPN IPv4 DNS) added with ID=%I64d\r\n", filterid);
 						filterids.push_back(filterid);
 
-						// Second filter. Block IPv6 DNS requests from svchost.exe.
+						// Second filter. Permit IPv6 DNS queries from OpenVPN itself.
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
 						// Add filter condition to our interface. Save filter id in filterids.
@@ -202,12 +203,35 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 							&Filter,
 							NULL,
 							&filterid);
+						printf("Filter (Permit OpenVPN IPv6 DNS) added with ID=%I64d\r\n", filterid);
+						filterids.push_back(filterid);
+
+						// Third filter. Block all IPv4 DNS queries.
+						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+						Filter.action.type = FWP_ACTION_BLOCK;
+						Filter.weight.type = FWP_EMPTY;
+						Filter.numFilterConditions = 1;
+						dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
+							&Filter,
+							NULL,
+							&filterid);
+						printf("Filter (Block IPv4 DNS) added with ID=%I64d\r\n", filterid);
+						filterids.push_back(filterid);
+
+						// Forth filter. Block all IPv6 DNS queries. */
+						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+
+						dwFwAPiRetCode = ::FwpmFilterAdd0(m_hEngineHandle,
+							&Filter,
+							NULL,
+							&filterid);
 						printf("Filter (Block IPv6 DNS) added with ID=%I64d\r\n", filterid);
 						filterids.push_back(filterid);
 
-						// Third filter. Permit all IPv4 traffic from TAP.
+						// Fifth filter. Permit all IPv4 traffic from TAP.
 						Filter.action.type = FWP_ACTION_PERMIT;
 						Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+						Filter.numFilterConditions = 2;
 
 						Condition[1].fieldKey = FWPM_CONDITION_IP_LOCAL_INTERFACE;
 						Condition[1].matchType = FWP_MATCH_EQUAL;
@@ -227,7 +251,7 @@ DWORD PacketFilter::AddRemoveFilter( bool bAdd )
 							printf("Filter (Permit all IPv4 traffic from TAP) added with ID=%I64d\r\n", filterid);
 							filterids.push_back(filterid);
 
-							// Forth filter. Permit all IPv6 traffic from TAP.
+							// Sixth filter. Permit all IPv6 traffic from TAP.
 							Filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
 							// Add filter condition to our interface. Save filter id in filterids.
